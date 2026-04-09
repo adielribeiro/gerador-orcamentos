@@ -81,9 +81,9 @@ function moeda(valor) {
 }
 
 function totalItens(lista) {
-  return lista.reduce((acc, item) => {
-    const quantidade = paraNumero(item.quantidade);
-    const valorUnitario = paraNumero(item.valorUnitario);
+  return (Array.isArray(lista) ? lista : []).reduce((acc, item) => {
+    const quantidade = paraNumero(item?.quantidade);
+    const valorUnitario = paraNumero(item?.valorUnitario);
     return acc + quantidade * valorUnitario;
   }, 0);
 }
@@ -148,28 +148,117 @@ function baixarBlob(blob, nomeArquivo) {
   URL.revokeObjectURL(url);
 }
 
+function normalizarListaItens(lista) {
+  if (!Array.isArray(lista)) return [];
+
+  return lista.map((item) => ({
+    descricao: item?.descricao || "",
+    quantidade: item?.quantidade ?? 1,
+    valorUnitario: item?.valorUnitario ?? ""
+  }));
+}
+
+function normalizarQuoteHistorico(item, parametrosPadrao = DEFAULT_PARAMS) {
+  const quote = item && typeof item === "object" ? item : {};
+
+  const pecas = normalizarListaItens(quote?.itens?.pecas ?? quote?.pecas ?? []);
+  const insumos = normalizarListaItens(quote?.itens?.insumos ?? quote?.insumos ?? []);
+
+  const percentualMaoDeObra = paraNumero(
+    quote?.parametrosAplicados?.percentualMaoDeObra ??
+      parametrosPadrao.percentualMaoDeObra
+  );
+
+  const percentualPecas = paraNumero(
+    quote?.parametrosAplicados?.percentualPecas ?? parametrosPadrao.percentualPecas
+  );
+
+  const validadeOrcamentoDias = paraNumero(
+    quote?.parametrosAplicados?.validadeOrcamentoDias ??
+      parametrosPadrao.validadeOrcamentoDias
+  );
+
+  const subtotalPecas = paraNumero(
+    quote?.totais?.subtotalPecas ?? totalItens(pecas)
+  );
+
+  const subtotalInsumos = paraNumero(
+    quote?.totais?.subtotalInsumos ?? totalItens(insumos)
+  );
+
+  const maoDeObraBase = paraNumero(
+    quote?.totais?.maoDeObraBase ?? quote?.valorMaoDeObra ?? 0
+  );
+
+  const maoDeObraFinal = paraNumero(
+    quote?.totais?.maoDeObraFinal ??
+      maoDeObraBase * (1 + percentualMaoDeObra / 100)
+  );
+
+  const pecasFinal = paraNumero(
+    quote?.totais?.pecasFinal ??
+      subtotalPecas * (1 + percentualPecas / 100)
+  );
+
+  const totalFinal = paraNumero(
+    quote?.totais?.totalFinal ??
+      maoDeObraFinal + pecasFinal + subtotalInsumos
+  );
+
+  return {
+    ...quote,
+    id: quote?.id,
+    empresa: quote?.empresa || parametrosPadrao.nomeEmpresa || "Minha Empresa",
+    cliente: quote?.cliente || quote?.client || "Sem nome",
+    descricaoServico: quote?.descricaoServico || "",
+    observacoes: quote?.observacoes || "",
+    dataCriacao: quote?.dataCriacao || quote?.created_at || new Date().toISOString(),
+    itens: {
+      pecas,
+      insumos
+    },
+    parametrosAplicados: {
+      percentualMaoDeObra,
+      percentualPecas,
+      validadeOrcamentoDias
+    },
+    totais: {
+      maoDeObraBase: arredondar(maoDeObraBase),
+      subtotalPecas: arredondar(subtotalPecas),
+      subtotalInsumos: arredondar(subtotalInsumos),
+      maoDeObraFinal: arredondar(maoDeObraFinal),
+      pecasFinal: arredondar(pecasFinal),
+      totalFinal: arredondar(totalFinal)
+    }
+  };
+}
+
 function normalizarParaCompartilhamento(registro, parametrosAtuais, totaisAtuais) {
   const ehHistorico = !!registro?.itens;
 
   if (ehHistorico) {
+    const normalizado = normalizarQuoteHistorico(registro, parametrosAtuais);
+
     return {
-      empresa: registro.empresa || parametrosAtuais.nomeEmpresa || "Minha Empresa",
-      cliente: registro.cliente || "Sem nome",
-      descricaoServico: registro.descricaoServico || "",
-      observacoes: registro.observacoes || "",
-      dataCriacao: registro.dataCriacao || new Date().toISOString(),
-      pecas: registro.itens?.pecas || [],
-      insumos: registro.itens?.insumos || [],
+      empresa: normalizado.empresa || parametrosAtuais.nomeEmpresa || "Minha Empresa",
+      cliente: normalizado.cliente || "Sem nome",
+      descricaoServico: normalizado.descricaoServico || "",
+      observacoes: normalizado.observacoes || "",
+      dataCriacao: normalizado.dataCriacao || new Date().toISOString(),
+      pecas: normalizado.itens?.pecas || [],
+      insumos: normalizado.itens?.insumos || [],
       parametrosAplicados: {
         percentualMaoDeObra: paraNumero(
-          registro.parametrosAplicados?.percentualMaoDeObra
+          normalizado.parametrosAplicados?.percentualMaoDeObra
         ),
-        percentualPecas: paraNumero(registro.parametrosAplicados?.percentualPecas),
+        percentualPecas: paraNumero(
+          normalizado.parametrosAplicados?.percentualPecas
+        ),
         validadeOrcamentoDias: paraNumero(
-          registro.parametrosAplicados?.validadeOrcamentoDias
+          normalizado.parametrosAplicados?.validadeOrcamentoDias
         )
       },
-      totais: registro.totais
+      totais: normalizado.totais
     };
   }
 
@@ -622,7 +711,10 @@ export default function OrcamentosPage({ token, user, onLogout }) {
       try {
         setCarregandoHistorico(true);
         const dados = await api.getQuotes(token);
-        setHistorico(dados);
+        const listaNormalizada = (Array.isArray(dados) ? dados : []).map((item) =>
+          normalizarQuoteHistorico(item, parametros)
+        );
+        setHistorico(listaNormalizada);
       } catch {
         setHistorico([]);
       } finally {
@@ -631,7 +723,7 @@ export default function OrcamentosPage({ token, user, onLogout }) {
     }
 
     carregarHistorico();
-  }, [token]);
+  }, [token, parametros]);
 
   const totais = useMemo(
     () => calcularTotais(orcamento, parametros),
@@ -765,8 +857,9 @@ export default function OrcamentosPage({ token, user, onLogout }) {
       };
 
       const salvo = await api.createQuote(token, registro);
+      const salvoNormalizado = normalizarQuoteHistorico(salvo, parametros);
 
-      setHistorico((anterior) => [salvo, ...anterior]);
+      setHistorico((anterior) => [salvoNormalizado, ...anterior]);
       mostrarMensagem("Orçamento salvo com sucesso.");
       setOrcamento(criarOrcamentoInicial(parametros));
       setAba(1);
@@ -1048,140 +1141,146 @@ export default function OrcamentosPage({ token, user, onLogout }) {
                   </CardContent>
                 </Card>
               ) : (
-                historico.map((item) => (
-                  <Card key={item.id}>
-                    <CardContent>
-                      <Stack spacing={1.5}>
-                        <Box
-                          sx={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "flex-start",
-                            gap: 2,
-                            flexWrap: "wrap"
-                          }}
-                        >
-                          <Box>
-                            <Typography variant="h6">{item.cliente}</Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {formatarData(item.dataCriacao)}
-                            </Typography>
+                historico.map((item) => {
+                  const itemNormalizado = normalizarQuoteHistorico(item, parametros);
+
+                  return (
+                    <Card key={itemNormalizado.id}>
+                      <CardContent>
+                        <Stack spacing={1.5}>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "flex-start",
+                              gap: 2,
+                              flexWrap: "wrap"
+                            }}
+                          >
+                            <Box>
+                              <Typography variant="h6">
+                                {itemNormalizado.cliente}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {formatarData(itemNormalizado.dataCriacao)}
+                              </Typography>
+                            </Box>
+
+                            <Chip
+                              color="secondary"
+                              label={moeda(itemNormalizado.totais.totalFinal)}
+                            />
                           </Box>
 
-                          <Chip
-                            color="secondary"
-                            label={moeda(item.totais.totalFinal)}
-                          />
-                        </Box>
+                          <Typography variant="body2">
+                            <strong>Serviço:</strong>{" "}
+                            {itemNormalizado.descricaoServico || "Não informado"}
+                          </Typography>
 
-                        <Typography variant="body2">
-                          <strong>Serviço:</strong>{" "}
-                          {item.descricaoServico || "Não informado"}
-                        </Typography>
-
-                        <Box
-                          sx={{
-                            display: "grid",
-                            gap: 1,
-                            gridTemplateColumns: {
-                              xs: "1fr",
-                              sm: "1fr 1fr"
-                            }
-                          }}
-                        >
-                          <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3 }}>
-                            <Typography variant="body2" color="text.secondary">
-                              Mão de obra final
-                            </Typography>
-                            <Typography fontWeight={700}>
-                              {moeda(item.totais.maoDeObraFinal)}
-                            </Typography>
-                          </Paper>
-
-                          <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3 }}>
-                            <Typography variant="body2" color="text.secondary">
-                              Peças final
-                            </Typography>
-                            <Typography fontWeight={700}>
-                              {moeda(item.totais.pecasFinal)}
-                            </Typography>
-                          </Paper>
-
-                          <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3 }}>
-                            <Typography variant="body2" color="text.secondary">
-                              Insumos
-                            </Typography>
-                            <Typography fontWeight={700}>
-                              {moeda(item.totais.subtotalInsumos)}
-                            </Typography>
-                          </Paper>
-
-                          <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3 }}>
-                            <Typography variant="body2" color="text.secondary">
-                              Total
-                            </Typography>
-                            <Typography fontWeight={700}>
-                              {moeda(item.totais.totalFinal)}
-                            </Typography>
-                          </Paper>
-                        </Box>
-
-                        <Stack
-                          direction={{ xs: "column", md: "row" }}
-                          spacing={1}
-                          justifyContent="space-between"
-                        >
-                          <Stack
-                            direction={{ xs: "column", sm: "row" }}
-                            spacing={1}
-                            flexWrap="wrap"
+                          <Box
+                            sx={{
+                              display: "grid",
+                              gap: 1,
+                              gridTemplateColumns: {
+                                xs: "1fr",
+                                sm: "1fr 1fr"
+                              }
+                            }}
                           >
-                            <Button
-                              variant="outlined"
-                              startIcon={<PictureAsPdfIcon />}
-                              onClick={() => baixarPdf(item)}
+                            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3 }}>
+                              <Typography variant="body2" color="text.secondary">
+                                Mão de obra final
+                              </Typography>
+                              <Typography fontWeight={700}>
+                                {moeda(itemNormalizado.totais.maoDeObraFinal)}
+                              </Typography>
+                            </Paper>
+
+                            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3 }}>
+                              <Typography variant="body2" color="text.secondary">
+                                Peças final
+                              </Typography>
+                              <Typography fontWeight={700}>
+                                {moeda(itemNormalizado.totais.pecasFinal)}
+                              </Typography>
+                            </Paper>
+
+                            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3 }}>
+                              <Typography variant="body2" color="text.secondary">
+                                Insumos
+                              </Typography>
+                              <Typography fontWeight={700}>
+                                {moeda(itemNormalizado.totais.subtotalInsumos)}
+                              </Typography>
+                            </Paper>
+
+                            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3 }}>
+                              <Typography variant="body2" color="text.secondary">
+                                Total
+                              </Typography>
+                              <Typography fontWeight={700}>
+                                {moeda(itemNormalizado.totais.totalFinal)}
+                              </Typography>
+                            </Paper>
+                          </Box>
+
+                          <Stack
+                            direction={{ xs: "column", md: "row" }}
+                            spacing={1}
+                            justifyContent="space-between"
+                          >
+                            <Stack
+                              direction={{ xs: "column", sm: "row" }}
+                              spacing={1}
+                              flexWrap="wrap"
                             >
-                              PDF
-                            </Button>
+                              <Button
+                                variant="outlined"
+                                startIcon={<PictureAsPdfIcon />}
+                                onClick={() => baixarPdf(itemNormalizado)}
+                              >
+                                PDF
+                              </Button>
+
+                              <Button
+                                variant="outlined"
+                                startIcon={<ShareIcon />}
+                                onClick={() => compartilharPdf(itemNormalizado)}
+                              >
+                                Compartilhar
+                              </Button>
+
+                              <Button
+                                variant="outlined"
+                                startIcon={<SendIcon />}
+                                onClick={() => enviarWhatsApp(itemNormalizado)}
+                              >
+                                WhatsApp
+                              </Button>
+
+                              <Button
+                                variant="outlined"
+                                startIcon={<EmailIcon />}
+                                onClick={() => enviarEmail(itemNormalizado)}
+                              >
+                                E-mail
+                              </Button>
+                            </Stack>
 
                             <Button
+                              color="error"
                               variant="outlined"
-                              startIcon={<ShareIcon />}
-                              onClick={() => compartilharPdf(item)}
+                              startIcon={<DeleteOutlineIcon />}
+                              onClick={() => excluirOrcamento(itemNormalizado.id)}
                             >
-                              Compartilhar
-                            </Button>
-
-                            <Button
-                              variant="outlined"
-                              startIcon={<SendIcon />}
-                              onClick={() => enviarWhatsApp(item)}
-                            >
-                              WhatsApp
-                            </Button>
-
-                            <Button
-                              variant="outlined"
-                              startIcon={<EmailIcon />}
-                              onClick={() => enviarEmail(item)}
-                            >
-                              E-mail
+                              Excluir
                             </Button>
                           </Stack>
-
-                          <Button
-                            color="error"
-                            variant="outlined"
-                            startIcon={<DeleteOutlineIcon />}
-                            onClick={() => excluirOrcamento(item.id)}
-                          >
-                            Excluir
-                          </Button>
                         </Stack>
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                ))
+                      </CardContent>
+                    </Card>
+                  );
+                })
               )}
             </Stack>
           )}
