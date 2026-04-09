@@ -21,13 +21,6 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  register(email, password) {
-    return request("/auth/register", {
-      method: "POST",
-      body: JSON.stringify({ email, password })
-    });
-  },
-
   login(email, password) {
     return request("/auth/login", {
       method: "POST",
@@ -69,6 +62,45 @@ export const api = {
       headers: {
         Authorization: `Bearer ${token}`
       }
+    });
+  },
+
+  adminListUsers(token) {
+    return request("/admin/users", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  },
+
+  adminCreateUser(token, payload) {
+    return request("/admin/users", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+  },
+
+  adminChangePassword(token, userId, password) {
+    return request(`/admin/users/${userId}/password`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ password })
+    });
+  },
+
+  adminChangeStatus(token, userId, isActive) {
+    return request(`/admin/users/${userId}/status`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ isActive })
     });
   }
 };

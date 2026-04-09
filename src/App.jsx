@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Box, CircularProgress } from "@mui/material";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { api } from "./services/api";
 import LoginPage from "./LoginPage";
 import OrcamentosPage from "./OrcamentosPage";
+import AdminPage from "./AdminPage";
 
 const TOKEN_KEY = "orcamentos_token";
 
@@ -34,11 +36,7 @@ export default function App() {
     validarToken();
   }, [token]);
 
-  async function handleAuth({ email, password, modo }) {
-    if (modo === "register") {
-      await api.register(email, password);
-    }
-
+  async function handleLogin({ email, password }) {
     const data = await api.login(email, password);
     localStorage.setItem(TOKEN_KEY, data.token);
     setToken(data.token);
@@ -60,9 +58,34 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginPage onSubmit={handleAuth} />;
+    return <LoginPage onSubmit={handleLogin} />;
   }
 
-  return <OrcamentosPage token={token} user={user} onLogout={handleLogout} />;
-}
+  return (
+    <Routes>
+      <Route
+        path="/"
+        element={
+          <OrcamentosPage
+            token={token}
+            user={user}
+            onLogout={handleLogout}
+          />
+        }
+      />
 
+      <Route
+        path="/admin"
+        element={
+          user.role === "admin" ? (
+            <AdminPage token={token} user={user} onLogout={handleLogout} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}

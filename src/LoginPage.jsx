@@ -11,7 +11,6 @@ import {
 } from "@mui/material";
 
 export default function LoginPage({ onSubmit }) {
-  const [modo, setModo] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [erro, setErro] = useState("");
@@ -23,9 +22,9 @@ export default function LoginPage({ onSubmit }) {
     setCarregando(true);
 
     try {
-      await onSubmit({ email, password, modo });
+      await onSubmit({ email, password });
     } catch (error) {
-      setErro(error.message || "Não foi possível continuar.");
+      setErro(error.message || "Não foi possível entrar.");
     } finally {
       setCarregando(false);
     }
@@ -46,10 +45,10 @@ export default function LoginPage({ onSubmit }) {
           <Stack spacing={2}>
             <Box>
               <Typography variant="h5" fontWeight={700}>
-                {modo === "login" ? "Entrar" : "Criar conta"}
+                Entrar
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Acesse seus orçamentos com e-mail e senha.
+                Informe seu e-mail e senha para acessar o sistema.
               </Typography>
             </Box>
 
@@ -74,25 +73,10 @@ export default function LoginPage({ onSubmit }) {
                 />
 
                 <Button type="submit" variant="contained" disabled={carregando}>
-                  {carregando
-                    ? "Aguarde..."
-                    : modo === "login"
-                    ? "Entrar"
-                    : "Criar conta"}
+                  {carregando ? "Entrando..." : "Entrar"}
                 </Button>
               </Stack>
             </form>
-
-            <Button
-              variant="text"
-              onClick={() =>
-                setModo((atual) => (atual === "login" ? "register" : "login"))
-              }
-            >
-              {modo === "login"
-                ? "Ainda não tenho conta"
-                : "Já tenho conta"}
-            </Button>
           </Stack>
         </CardContent>
       </Card>
