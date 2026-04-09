@@ -65,6 +65,25 @@ export const api = {
     });
   },
 
+  getSettings(token) {
+    return request("/settings", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  },
+
+  updateSettings(token, settings) {
+    return request("/settings", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(settings)
+    });
+  },
+
   adminListUsers(token) {
     return request("/admin/users", {
       method: "GET",

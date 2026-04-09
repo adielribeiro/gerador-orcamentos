@@ -39,8 +39,6 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import ShareIcon from "@mui/icons-material/Share";
 import { api } from "./services/api";
 
-const STORAGE_PARAMS_KEY = "orcamentos_parametros";
-
 const DEFAULT_PARAMS = {
   nomeEmpresa: "Minha Empresa",
   percentualMaoDeObra: 20,
@@ -94,6 +92,23 @@ function arredondar(valor) {
   return Number((valor || 0).toFixed(2));
 }
 
+function normalizarParametros(parametros) {
+  return {
+    nomeEmpresa: parametros?.nomeEmpresa || DEFAULT_PARAMS.nomeEmpresa,
+    percentualMaoDeObra: paraNumero(
+      parametros?.percentualMaoDeObra ?? DEFAULT_PARAMS.percentualMaoDeObra
+    ),
+    percentualPecas: paraNumero(
+      parametros?.percentualPecas ?? DEFAULT_PARAMS.percentualPecas
+    ),
+    validadeOrcamentoDias: paraNumero(
+      parametros?.validadeOrcamentoDias ?? DEFAULT_PARAMS.validadeOrcamentoDias
+    ),
+    observacoesPadrao:
+      parametros?.observacoesPadrao || DEFAULT_PARAMS.observacoesPadrao
+  };
+}
+
 function calcularTotais(form, parametros) {
   const maoDeObraBase = paraNumero(form.valorMaoDeObra);
   const subtotalPecas = totalItens(form.pecas);
@@ -114,15 +129,6 @@ function calcularTotais(form, parametros) {
     pecasFinal: arredondar(pecasFinal),
     totalFinal: arredondar(totalFinal)
   };
-}
-
-function carregarLocalStorage(chave, fallback) {
-  try {
-    const valor = localStorage.getItem(chave);
-    return valor ? JSON.parse(valor) : fallback;
-  } catch {
-    return fallback;
-  }
 }
 
 function formatarData(dataIso) {
@@ -684,40 +690,40 @@ export default function OrcamentosPage({ token, user, onLogout }) {
   const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
 
   const [aba, setAba] = useState(0);
-  const [parametros, setParametros] = useState(() =>
-    carregarLocalStorage(STORAGE_PARAMS_KEY, DEFAULT_PARAMS)
-  );
-  const [orcamento, setOrcamento] = useState(() =>
-    criarOrcamentoInicial(
-      carregarLocalStorage(STORAGE_PARAMS_KEY, DEFAULT_PARAMS)
-    )
-  );
+  const [parametros, setParametros] = useState(DEFAULT_PARAMS);
+  const [orcamento, setOrcamento] = useState(criarOrcamentoInicial(DEFAULT_PARAMS));
   const [historico, setHistorico] = useState([]);
   const [carregandoHistorico, setCarregandoHistorico] = useState(true);
+  const [carregandoConfiguracoes, setCarregandoConfiguracoes] = useState(true);
+  const [salvandoConfiguracoes, setSalvandoConfiguracoes] = useState(false);
   const [mensagem, setMensagem] = useState("");
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_PARAMS_KEY, JSON.stringify(parametros));
-  }, [parametros]);
-
-  useEffect(() => {
-    async function carregarHistorico() {
+    async function carregarTudo() {
       try {
+        setCarregandoConfiguracoes(true);
+        const config = await api.getSettings(token);
+        const configNormalizada = normalizarParametros(config);
+
+        setParametros(configNormalizada);
+        setOrcamento(criarOrcamentoInicial(configNormalizada));
+
         setCarregandoHistorico(true);
         const dados = await api.getQuotes(token);
         const listaNormalizada = (Array.isArray(dados) ? dados : []).map((item) =>
-          normalizarQuoteHistorico(item, parametros)
+          normalizarQuoteHistorico(item, configNormalizada)
         );
         setHistorico(listaNormalizada);
       } catch {
         setHistorico([]);
       } finally {
+        setCarregandoConfiguracoes(false);
         setCarregandoHistorico(false);
       }
     }
 
-    carregarHistorico();
-  }, [token, parametros]);
+    carregarTudo();
+  }, [token]);
 
   const totais = useMemo(
     () => calcularTotais(orcamento, parametros),
@@ -741,6 +747,39 @@ export default function OrcamentosPage({ token, user, onLogout }) {
 
   const limparFormulario = () => {
     setOrcamento(criarOrcamentoInicial(parametros));
+  };
+
+  const salvarConfiguracoes = async () => {
+    try {
+      setSalvandoConfiguracoes(true);
+
+      const payload = {
+        nomeEmpresa: parametros.nomeEmpresa,
+        percentualMaoDeObra: paraNumero(parametros.percentualMaoDeObra),
+        percentualPecas: paraNumero(parametros.percentualPecas),
+        validadeOrcamentoDias: paraNumero(parametros.validadeOrcamentoDias),
+        observacoesPadrao: parametros.observacoesPadrao
+      };
+
+      const salvo = await api.updateSettings(token, payload);
+      const configuracoesSalvas = normalizarParametros(salvo);
+
+      setParametros(configuracoesSalvas);
+      setOrcamento((anterior) => ({
+        ...anterior,
+        observacoes:
+          !anterior.observacoes ||
+          anterior.observacoes === parametros.observacoesPadrao
+            ? configuracoesSalvas.observacoesPadrao
+            : anterior.observacoes
+      }));
+
+      mostrarMensagem("Configurações salvas com sucesso.");
+    } catch (error) {
+      mostrarMensagem(error.message || "Não foi possível salvar as configurações.");
+    } finally {
+      setSalvandoConfiguracoes(false);
+    }
   };
 
   const prepararCompartilhamento = async (registro) => {
@@ -1303,7 +1342,7 @@ export default function OrcamentosPage({ token, user, onLogout }) {
                   <Stack spacing={2}>
                     <TituloSecao
                       titulo="Configurações"
-                      subtitulo="Defina os valores usados nos cálculos."
+                      subtitulo="Defina os valores usados nos cálculos para sua conta."
                     />
 
                     <TextField
@@ -1315,6 +1354,7 @@ export default function OrcamentosPage({ token, user, onLogout }) {
                           nomeEmpresa: e.target.value
                         }))
                       }
+                      disabled={carregandoConfiguracoes}
                     />
 
                     <TextField
@@ -1328,6 +1368,7 @@ export default function OrcamentosPage({ token, user, onLogout }) {
                         }))
                       }
                       inputProps={{ min: 0, step: "0.01" }}
+                      disabled={carregandoConfiguracoes}
                     />
 
                     <TextField
@@ -1341,6 +1382,7 @@ export default function OrcamentosPage({ token, user, onLogout }) {
                         }))
                       }
                       inputProps={{ min: 0, step: "0.01" }}
+                      disabled={carregandoConfiguracoes}
                     />
 
                     <TextField
@@ -1354,6 +1396,7 @@ export default function OrcamentosPage({ token, user, onLogout }) {
                         }))
                       }
                       inputProps={{ min: 1, step: 1 }}
+                      disabled={carregandoConfiguracoes}
                     />
 
                     <TextField
@@ -1367,7 +1410,19 @@ export default function OrcamentosPage({ token, user, onLogout }) {
                           observacoesPadrao: e.target.value
                         }))
                       }
+                      disabled={carregandoConfiguracoes}
                     />
+
+                    <Button
+                      variant="contained"
+                      startIcon={<SaveIcon />}
+                      onClick={salvarConfiguracoes}
+                      disabled={carregandoConfiguracoes || salvandoConfiguracoes}
+                    >
+                      {salvandoConfiguracoes
+                        ? "Salvando..."
+                        : "Salvar configurações"}
+                    </Button>
                   </Stack>
                 </CardContent>
               </Card>
@@ -1401,8 +1456,7 @@ export default function OrcamentosPage({ token, user, onLogout }) {
                     </Paper>
 
                     <Alert severity="info">
-                      Revise as configurações para manter seus orçamentos sempre
-                      corretos.
+                      Essas configurações agora pertencem somente ao usuário logado.
                     </Alert>
                   </Stack>
                 </CardContent>
