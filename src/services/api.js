@@ -1,12 +1,14 @@
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:4000").replace(/\/+$/, "");
 
 async function request(path, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {})
+  };
+
   const response = await fetch(`${API_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    },
-    ...options
+    ...options,
+    headers
   });
 
   const data = await response.json().catch(() => ({}));
@@ -35,6 +37,7 @@ export const api = {
 
   me(token) {
     return request("/auth/me", {
+      method: "GET",
       headers: {
         Authorization: `Bearer ${token}`
       }
@@ -43,6 +46,7 @@ export const api = {
 
   getQuotes(token) {
     return request("/quotes", {
+      method: "GET",
       headers: {
         Authorization: `Bearer ${token}`
       }
