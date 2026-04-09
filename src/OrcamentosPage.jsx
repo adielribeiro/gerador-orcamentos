@@ -24,7 +24,9 @@ import {
   useMediaQuery
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import { Link as RouterLink } from "react-router-dom";
 import AddIcon from "@mui/icons-material/Add";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import CalculateIcon from "@mui/icons-material/Calculate";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EmailIcon from "@mui/icons-material/Email";
@@ -403,16 +405,8 @@ async function gerarPdfBlob(dados) {
   adicionarListaItens("Insumos", dados.insumos);
 
   adicionarTituloSecao("Resumo financeiro");
-  adicionarLinhaValor("Mão de obra base", moeda(dados.totais.maoDeObraBase));
-  adicionarLinhaValor(
-    `Mão de obra com ${paraNumero(dados.parametrosAplicados.percentualMaoDeObra)}%`,
-    moeda(dados.totais.maoDeObraFinal)
-  );
-  adicionarLinhaValor("Subtotal de peças", moeda(dados.totais.subtotalPecas));
-  adicionarLinhaValor(
-    `Peças com ${paraNumero(dados.parametrosAplicados.percentualPecas)}%`,
-    moeda(dados.totais.pecasFinal)
-  );
+  adicionarLinhaValor("Mão de obra", moeda(dados.totais.maoDeObraFinal));
+  adicionarLinhaValor("Peças", moeda(dados.totais.pecasFinal));
   adicionarLinhaValor("Insumos", moeda(dados.totais.subtotalInsumos));
 
   garantirEspaco(10);
@@ -916,7 +910,7 @@ export default function OrcamentosPage({ token, user, onLogout }) {
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", pb: isDesktop ? 0 : 10 }}>
       <AppBar position="fixed" color="inherit" elevation={0}>
-        <Toolbar sx={{ borderBottom: "1px solid #e5e7eb", gap: 1 }}>
+        <Toolbar sx={{ borderBottom: "1px solid #e5e7eb", gap: 1, flexWrap: "wrap" }}>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             {parametros.nomeEmpresa || "Gerador de Orçamentos"}
           </Typography>
@@ -927,6 +921,17 @@ export default function OrcamentosPage({ token, user, onLogout }) {
             color="primary"
             variant="outlined"
           />
+
+          {user?.role === "admin" ? (
+            <Button
+              component={RouterLink}
+              to="/admin"
+              variant="outlined"
+              startIcon={<AdminPanelSettingsIcon />}
+            >
+              Administração
+            </Button>
+          ) : null}
 
           <Button variant="outlined" onClick={onLogout}>
             Sair
